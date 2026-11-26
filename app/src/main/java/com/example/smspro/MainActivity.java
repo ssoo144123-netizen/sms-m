@@ -9,7 +9,9 @@ import android.database.Cursor;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Telephony;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -45,6 +47,7 @@ public class MainActivity extends Activity {
     private ConvAdapter adapter;
     private Spinner spinner;
     private TextView info;
+    private EditText edtSearch;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -55,6 +58,7 @@ public class MainActivity extends Activity {
 
         info = findViewById(R.id.txtInfo);
         spinner = findViewById(R.id.spinnerFilter);
+        edtSearch = findViewById(R.id.edtSearch);
         ListView list = findViewById(R.id.listView);
 
         adapter = new ConvAdapter();
@@ -66,6 +70,12 @@ public class MainActivity extends Activity {
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> p, View v, int pos, long id) { applyFilter(); }
             @Override public void onNothingSelected(AdapterView<?> p) { }
+        });
+
+        edtSearch.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { if (hasPerms()) load(); }
+            @Override public void afterTextChanged(Editable e) { }
         });
 
         list.setOnItemClickListener((p, v, pos, id) -> {
@@ -108,13 +118,17 @@ public class MainActivity extends Activity {
         return p.toArray(new String[0]);
     }
 
-    // گروه‌بندی پیامک‌ها بر اساس شماره فرستنده/گیرنده
+    // گروه‌بندی بر اساس شماره؛ با جستجو فقط پیامک‌های مطابق بررسی می‌شوند
     private void load() {
+        String q = edtSearch == null ? "" : edtSearch.getText().toString().trim();
+        String sel = q.isEmpty() ? null : "body LIKE ? OR address LIKE ?";
+        String[] args = q.isEmpty() ? null : new String[]{"%" + q + "%", "%" + q + "%"};
+
         Map<String, Conv> map = new LinkedHashMap<>();
         try (Cursor c = getContentResolver().query(Telephony.Sms.CONTENT_URI,
                 new String[]{Telephony.Sms.ADDRESS, Telephony.Sms.BODY,
                         Telephony.Sms.DATE, Telephony.Sms.READ},
-                null, null, Telephony.Sms.DATE + " DESC")) {
+                sel, args, Telephony.Sms.DATE + " DESC")) {
             if (c != null) {
                 while (c.moveToNext()) {
                     String addr = c.getString(0) == null ? "" : c.getString(0);
@@ -158,8 +172,6 @@ public class MainActivity extends Activity {
         info.setText("گفتگوها: " + shown.size() + "  |  انتخاب‌شده: " + selectedConvs().size());
     }
 
-    // ---------- دکمه‌ها ----------
-
     public void onSelectAll(View v) {
         boolean allOn = selectedConvs().size() == shown.size();
         for (Conv c : shown) c.selected = !allOn;
@@ -199,16 +211,21 @@ public class MainActivity extends Activity {
         load();
     }
 
+    // ذخیره فقط پیامک‌های گفتگوهای تیک‌خورده (و در صورت جستجو، همان پیامک‌های مطابق)
     public void onSave(View v) {
         List<Conv> sel = selectedConvs();
         if (sel.isEmpty()) { Util.toast(this, "گفتگویی انتخاب نشده"); return; }
 
+        String q = edtSearch.getText().toString().trim();
         List<String> entries = new ArrayList<>();
         for (Conv c : sel) {
             StringBuilder sb = new StringBuilder("گفتگو با " + c.address + "\n");
+            String where = q.isEmpty() ? "address=?" : "address=? AND body LIKE ?";
+            String[] args = q.isEmpty() ? new String[]{c.address}
+                    : new String[]{c.address, "%" + q + "%"};
             try (Cursor cur = getContentResolver().query(Telephony.Sms.CONTENT_URI,
                     new String[]{Telephony.Sms.BODY, Telephony.Sms.DATE, Telephony.Sms.TYPE},
-                    "address=?", new String[]{c.address}, Telephony.Sms.DATE + " ASC")) {
+                    where, args, Telephony.Sms.DATE + " ASC")) {
                 if (cur != null) {
                     while (cur.moveToNext()) {
                         boolean sent = cur.getInt(2) == Telephony.Sms.MESSAGE_TYPE_SENT;
@@ -259,8 +276,6 @@ public class MainActivity extends Activity {
     public void onSettings(View v) {
         startActivity(new Intent(this, SettingsActivity.class));
     }
-
-    // ---------- Adapter ----------
 
     private class ConvAdapter extends BaseAdapter {
         @Override public int getCount() { return shown.size(); }

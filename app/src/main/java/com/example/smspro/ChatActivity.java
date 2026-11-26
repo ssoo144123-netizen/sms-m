@@ -7,6 +7,8 @@ import android.database.Cursor;
 import android.os.Bundle;
 import android.provider.Telephony;
 import android.telephony.SmsManager;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -36,6 +38,7 @@ public class ChatActivity extends Activity {
     private MsgAdapter adapter;
     private ListView list;
     private EditText edtBody;
+    private EditText edtFind;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -50,8 +53,15 @@ public class ChatActivity extends Activity {
 
         list = findViewById(R.id.listMsgs);
         edtBody = findViewById(R.id.edtBody);
+        edtFind = findViewById(R.id.edtFind);
         adapter = new MsgAdapter();
         list.setAdapter(adapter);
+
+        edtFind.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a1, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a1, int b, int c) { load(); }
+            @Override public void afterTextChanged(Editable e) { }
+        });
 
         markAllRead();
     }
@@ -63,11 +73,16 @@ public class ChatActivity extends Activity {
     }
 
     private void load() {
+        String q = edtFind == null ? "" : edtFind.getText().toString().trim();
+        String where = q.isEmpty() ? "address=?" : "address=? AND body LIKE ?";
+        String[] args = q.isEmpty() ? new String[]{address}
+                : new String[]{address, "%" + q + "%"};
+
         msgs.clear();
         try (Cursor c = getContentResolver().query(Telephony.Sms.CONTENT_URI,
                 new String[]{Telephony.Sms._ID, Telephony.Sms.BODY, Telephony.Sms.DATE,
                         Telephony.Sms.TYPE, Telephony.Sms.READ},
-                "address=?", new String[]{address}, Telephony.Sms.DATE + " ASC")) {
+                where, args, Telephony.Sms.DATE + " ASC")) {
             if (c != null) {
                 while (c.moveToNext()) {
                     Msg m = new Msg();
@@ -128,6 +143,7 @@ public class ChatActivity extends Activity {
         load();
     }
 
+    // فقط پیامک‌های تیک‌خورده ذخیره می‌شوند
     public void onSave(View v) {
         List<Msg> sel = selected();
         if (sel.isEmpty()) { Util.toast(this, "پیامکی انتخاب نشده"); return; }
@@ -144,6 +160,7 @@ public class ChatActivity extends Activity {
         }
     }
 
+    // ارسال: اول پیامک ارسال می‌شود؛ ثبت در ارسال‌شده‌ها فقط در صورت پیش‌فرض بودن موفق است
     public void onSend(View v) {
         String body = edtBody.getText().toString().trim();
         if (body.isEmpty()) { Util.toast(this, "متن را وارد کنید"); return; }
@@ -156,7 +173,11 @@ public class ChatActivity extends Activity {
         try {
             SmsManager sm = SmsManager.getDefault();
             sm.sendMultipartTextMessage(address, null, sm.divideMessage(body), null, null);
-
+        } catch (Exception e) {
+            Util.toast(this, "خطا در ارسال: " + e.getMessage());
+            return;
+        }
+        try {
             ContentValues values = new ContentValues();
             values.put(Telephony.Sms.ADDRESS, address);
             values.put(Telephony.Sms.BODY, body);
@@ -164,12 +185,11 @@ public class ChatActivity extends Activity {
             values.put(Telephony.Sms.READ, 1);
             values.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT);
             getContentResolver().insert(Telephony.Sms.Sent.CONTENT_URI, values);
+        } catch (Exception ignored) { }
 
-            edtBody.setText("");
-            load();
-        } catch (Exception e) {
-            Util.toast(this, "خطا در ارسال: " + e.getMessage());
-        }
+        edtBody.setText("");
+        Util.toast(this, "پیامک ارسال شد");
+        load();
     }
 
     private class MsgAdapter extends BaseAdapter {

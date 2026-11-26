@@ -6,6 +6,13 @@
     android:orientation="vertical"
     android:padding="6dp">
 
+    <EditText
+        android:id="@+id/edtSearch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="جستجو در پیامک‌ها یا شماره"
+        android:textSize="14sp" />
+
     <Spinner
         android:id="@+id/spinnerFilter"
         android:layout_width="match_parent"

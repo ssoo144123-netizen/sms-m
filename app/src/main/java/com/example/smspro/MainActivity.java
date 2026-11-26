@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
         });
 
         if (!hasPerms()) requestPermissions(requiredPerms(), 1);
+        if (!isDefaultSms()) askDefaultSms();
     }
 
     @Override
@@ -316,5 +317,22 @@ public class MainActivity extends Activity {
             v.setBackgroundColor(AppTheme.bg(MainActivity.this));
             return v;
         }
+    }
+
+    private boolean isDefaultSms() {
+        return getPackageName().equals(Telephony.Sms.getDefaultSmsPackage(this));
+    }
+
+    private void askDefaultSms() {
+        new AlertDialog.Builder(this)
+                .setTitle("پیامک‌رسان پیش‌فرض")
+                .setMessage("برای دریافت، حذف و ثبت پیامک‌ها باید SmsPro پیامک‌رسان پیش‌فرض باشد. الان تنظیم کنید؟")
+                .setPositiveButton("تنظیم", (d, w) -> {
+                    Intent i = new Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT);
+                    i.putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, getPackageName());
+                    startActivity(i);
+                })
+                .setNegativeButton("بعداً", null)
+                .show();
     }
 }
